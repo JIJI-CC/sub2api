@@ -1,0 +1,98 @@
+# JIJI 二开版本发布：构建 Docker 镜像并推送到 GHCR。
+#
+# 触发方式：推送形如 jiji-v<上游版本>-<序号> 的 tag，例如 jiji-v0.2.18-1。
+#   - 应用版本号：0.2.18-jiji.1（`-` 后缀不参与在线更新的版本比较）
+#   - 镜像：ghcr.io/<owner>/sub2api:0.2.18-jiji.1 和 :latest
+#
+# 注意：上游 release.yml 监听 v* tag，本流程刻意使用 jiji-v* 前缀与其隔离，
+# 不要向 origin 推送 v* tag。
+name: JIJI Release
+
+on:
+  push:
+    tags:
+      - 'jiji-v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to build, e.g. jiji-v0.2.18-1'
+        required: true
+        type: string
+      platforms:
+        description: 'Target platforms'
+        required: false
+        type: string
+        default: 'linux/amd64'
+      push:
+        description: 'Push image to GHCR (false = build only)'
+        required: false
+        type: boolean
+        default: true
+
+concurrency:
+  group: jiji-release-${{ github.repository }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve version
+        id: meta
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          if [[ ! "$TAG" =~ ^jiji-v([0-9]+\.[0-9]+\.[0-9]+)-([0-9]+)$ ]]; then
+            echo "::error::tag '$TAG' must look like jiji-v0.2.18-1"
+            exit 1
+          fi
+          version="${BASH_REMATCH[1]}-jiji.${BASH_REMATCH[2]}"
+          owner="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
+          {
+            echo "tag=$TAG"
+            echo "version=$version"
+            echo "image=ghcr.io/$owner/sub2api"
+            echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ steps.meta.outputs.tag }}
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        if: ${{ github.event_name == 'push' || inputs.push }}
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          platforms: ${{ inputs.platforms || 'linux/amd64' }}
+          push: ${{ github.event_name == 'push' || inputs.push }}
+          build-args: |
+            VERSION=${{ steps.meta.outputs.version }}
+            COMMIT=${{ github.sha }}
+            DATE=${{ steps.meta.outputs.date }}
+            GOPROXY=https://proxy.golang.org,direct
+            GOSUMDB=sum.golang.org
+          tags: |
+            ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.version }}
+            ${{ steps.meta.outputs.image }}:latest
+          labels: |
+            org.opencontainers.image.version=${{ steps.meta.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
