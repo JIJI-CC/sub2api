@@ -160,7 +160,8 @@ func ProvideBatchImageHandler(
 
 // ProvideSystemHandler creates admin.SystemHandler with UpdateService
 func ProvideSystemHandler(updateService *service.UpdateService, lockService *service.SystemOperationLockService) *admin.SystemHandler {
-	return admin.NewSystemHandler(updateService, lockService)
+	// JIJI: 禁用在线更新/回滚，避免被替换为上游原版
+	return admin.NewSystemHandler(admin.NewJijiUpdateDisabled(updateService), lockService)
 }
 
 // ProvideSettingHandler creates SettingHandler with version from BuildInfo

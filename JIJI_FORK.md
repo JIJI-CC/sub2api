@@ -84,6 +84,6 @@ git push origin jiji-v0.2.18-1      # 只推这一个 tag
 
 ## 部署注意事项
 
-- **不要使用后台「在线更新 / 回滚」**：它固定从上游 `Wei-Shaw/sub2api` 拉取 release，会把二开版本替换成上游原版。升级一律通过拉取新镜像完成。
+- **后台「在线更新 / 回滚」已禁用**：上游更新源固定为 `Wei-Shaw/sub2api`，会把二开版本替换成上游原版。现由 `admin.JijiUpdateDisabled` 替换更新服务（接入点在 `handler/wire.go` 的 `ProvideSystemHandler`），检查更新恒为最新、不访问 GitHub，更新/回滚接口返回 403 `ONLINE_UPDATE_DISABLED`；前端隐藏回滚入口。升级一律通过拉取新镜像完成。同步上游时若 `ProvideSystemHandler` 或 `systemUpdateService` 接口有变，需同步调整。
 - `deploy/install.sh`、`deploy/docker-deploy.sh` 默认指向上游仓库与镜像，部署时请改用 `ghcr.io/jiji-cc/sub2api` 镜像。
 - GHCR 包默认私有，服务器拉取需 `docker login ghcr.io`，或在 GitHub Packages 设置中将其改为公开。
